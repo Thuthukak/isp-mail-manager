@@ -65,7 +65,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => 'Africa/Johannesburg',
 
     /*
     |--------------------------------------------------------------------------
@@ -121,56 +121,6 @@ return [
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | OneDrive Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for OneDrive integration
-    |
-    */
-
-    'client_id' => env('ONEDRIVE_CLIENT_ID'),
-    'client_secret' => env('ONEDRIVE_CLIENT_SECRET'),
-    'tenant_id' => env('ONEDRIVE_TENANT_ID'),
-    'redirect_uri' => env('ONEDRIVE_REDIRECT_URI'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | OneDrive API Settings
-    |--------------------------------------------------------------------------
-    */
-
-    'api_url' => 'https://graph.microsoft.com/v1.0',
-    'scopes' => [
-        'https://graph.microsoft.com/Files.ReadWrite.All',
-        'https://graph.microsoft.com/Sites.ReadWrite.All',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Upload Configuration
-    |--------------------------------------------------------------------------
-    */
-
-    'chunk_size' => 1024 * 1024 * 4, // 4MB chunks
-    'max_file_size' => 1024 * 1024 * 100, // 100MB max file size
-    'retry_attempts' => 3,
-    'retry_delay' => 5, // seconds
-
-    /*
-    |--------------------------------------------------------------------------
-    | Backup Directory Structure
-    |--------------------------------------------------------------------------
-    */
-
-    'backup_root' => 'mail_backups',
-    'directory_structure' => [
-        'by_date' => true,
-        'by_mailbox' => true,
-        'format' => 'Y/m/d', // Year/Month/Day
     ],
 
 ];

@@ -6,7 +6,7 @@ use App\Models\MailBackup;
 use App\Models\MailRestoration;
 use App\Models\SyncLog;
 use App\Services\MailRestorationService;
-use App\Services\OneDriveService;
+use App\Services\OneDrivePersonalService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -44,7 +44,7 @@ class RestoreMailsJob implements ShouldQueue
 
     public function handle(
         MailRestorationService $restorationService,
-        OneDriveService $oneDriveService
+        OneDrivePersonalService $oneDriveService
     ): void {
         $restoration = MailRestoration::findOrFail($this->restorationId);
         

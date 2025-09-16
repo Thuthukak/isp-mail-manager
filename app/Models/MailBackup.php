@@ -4,13 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\EmailAccount;
 
 class MailBackup extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'email_account_id',
+        'message_id',
+        'mailbox_folder',
         'email_address',
         'original_file_path',
         'onedrive_path',
@@ -30,12 +35,19 @@ class MailBackup extends Model
         'metadata' => 'array',
         'file_size' => 'integer',
         'retry_count' => 'integer',
+        'email_account_id' => 'integer',
     ];
 
     public const STATUS_PENDING = 'pending';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
+
+    // Fixed: Should be BelongsTo, not HasMany
+    public function emailAccount(): BelongsTo
+    {
+        return $this->belongsTo(EmailAccount::class);
+    }
 
     public static function getStatusOptions(): array
     {
@@ -79,6 +91,11 @@ class MailBackup extends Model
         return $query->where('email_address', $email);
     }
 
+    public function scopeForEmailAccount($query, int $emailAccountId)
+    {
+        return $query->where('email_account_id', $emailAccountId);
+    }
+
     public function scopeCompleted($query)
     {
         return $query->where('status', self::STATUS_COMPLETED);
@@ -89,19 +106,58 @@ class MailBackup extends Model
         return $query->where('status', self::STATUS_FAILED);
     }
 
+    public function scopePending($query)
+    {
+        return $query->where('status', self::STATUS_PENDING);
+    }
+
+    public function scopeProcessing($query)
+    {
+        return $query->where('status', self::STATUS_PROCESSING);
+    }
+
     public function scopeByDateRange($query, $startDate, $endDate)
     {
         return $query->whereBetween('backup_date', [$startDate, $endDate]);
     }
 
+    public function scopeByMessageId($query, string $messageId)
+    {
+        return $query->where('message_id', $messageId);
+    }
+
+    public function scopeByMailboxFolder($query, string $folder)
+    {
+        return $query->where('mailbox_folder', $folder);
+    }
+
+    // Remove or fix this relationship - it doesn't seem to make sense
+    // as it's linking by email_address which could match multiple records
+    /*
     public function syncLogs(): HasMany
     {
         return $this->hasMany(SyncLog::class, 'email_address', 'email_address');
     }
+    */
 
     public function isCompleted(): bool
     {
         return $this->status === self::STATUS_COMPLETED;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isProcessing(): bool
+    {
+        return $this->status === self::STATUS_PROCESSING;
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->status === self::STATUS_FAILED;
     }
 
     public function canRetry(): bool
@@ -112,6 +168,11 @@ class MailBackup extends Model
     public function incrementRetryCount(): void
     {
         $this->increment('retry_count');
+    }
+
+    public function markAsProcessing(): void
+    {
+        $this->update(['status' => self::STATUS_PROCESSING]);
     }
 
     public function markAsCompleted(): void
@@ -128,5 +189,33 @@ class MailBackup extends Model
             'status' => self::STATUS_FAILED,
             'error_message' => $errorMessage,
         ]);
+    }
+
+    public function resetForRetry(): void
+    {
+        $this->update([
+            'status' => self::STATUS_PENDING,
+            'error_message' => null,
+        ]);
+        $this->incrementRetryCount();
+    }
+
+    public function verifyIntegrity(): bool
+    {
+        // Add logic to verify file integrity using file_hash
+        // This is a placeholder - implement according to your needs
+        return true;
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Automatically set backup_date when creating if not provided
+        static::creating(function ($model) {
+            if (!$model->backup_date) {
+                $model->backup_date = now();
+            }
+        });
     }
 }

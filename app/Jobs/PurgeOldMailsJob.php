@@ -6,7 +6,7 @@ use App\Models\MailBackup;
 use App\Models\PurgeHistory;
 use App\Models\SyncLog;
 use App\Services\MailServerService;
-use App\Services\OneDriveService;
+use App\Services\OneDrivePersonalService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -39,7 +39,7 @@ class PurgeOldMailsJob implements ShouldQueue
 
     public function handle(
         MailServerService $mailServerService,
-        OneDriveService $oneDriveService
+        OneDrivePersonalService $oneDriveService
     ): void {
         $syncLog = SyncLog::create([
             'operation_type' => 'purge_old_mails',

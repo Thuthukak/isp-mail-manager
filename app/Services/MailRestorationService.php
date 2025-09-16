@@ -9,10 +9,10 @@ use Illuminate\Support\Facades\File;
 
 class MailRestorationService
 {
-    private OneDriveService $oneDriveService;
+    private OneDrivePersonalService $oneDriveService;
     private MailServerService $mailServerService;
 
-    public function __construct(OneDriveService $oneDriveService, MailServerService $mailServerService)
+    public function __construct(OneDrivePersonalService $oneDriveService, MailServerService $mailServerService)
     {
         $this->oneDriveService = $oneDriveService;
         $this->mailServerService = $mailServerService;

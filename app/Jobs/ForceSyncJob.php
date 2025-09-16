@@ -6,7 +6,7 @@ use App\Models\MailBackup;
 use App\Models\SyncLog;
 use App\Services\MailBackupService;
 use App\Services\MailServerService;
-use App\Services\OneDriveService;
+use App\Services\OneDrivePersonalService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,7 +42,7 @@ class ForceSyncJob implements ShouldQueue
     public function handle(
         MailBackupService $backupService,
         MailServerService $mailServerService,
-        OneDriveService $oneDriveService
+        OneDrivePersonalService $oneDriveService
     ): void {
         $syncLog = SyncLog::create([
             'operation_type' => 'force_sync',
@@ -191,7 +191,7 @@ class ForceSyncJob implements ShouldQueue
     private function processSingleFile(
         array $file,
         MailBackupService $backupService,
-        OneDriveService $oneDriveService
+        OneDrivePersonalService $oneDriveService
     ): array {
         // Find existing backup record
         $backup = MailBackup::where('mail_path', $file['path'])->first();

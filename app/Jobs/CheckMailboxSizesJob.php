@@ -66,32 +66,40 @@ class CheckMailboxSizesJob implements ShouldQueue
                     
                     // Get mailbox size
                     $sizeInfo = $mailServerService->getDirectorySize($mailboxPath);
-                    $sizeMB = round($sizeInfo['size'] / 1024 / 1024, 2);
+                    $sizeBytes = $sizeInfo['size'];
+                    $sizeMB = round($sizeBytes / 1024 / 1024, 2);
                     
                     // Get threshold for this mailbox
-                    $threshold = $this->getThresholdForMailbox($mailboxPath);
+                    $thresholdMB = $this->getThresholdForMailbox($mailboxPath);
+                    $thresholdBytes = $thresholdMB * 1024 * 1024;
                     
                     Log::debug('Mailbox size check', [
                         'mailbox' => $mailboxPath,
                         'size_mb' => $sizeMB,
-                        'threshold_mb' => $threshold,
+                        'threshold_mb' => $thresholdMB,
                         'file_count' => $sizeInfo['file_count']
                     ]);
 
+                    // Determine alert type based on usage percentage
+                    $usagePercentage = ($sizeBytes / $thresholdBytes) * 100;
+                    $alertType = $this->determineAlertType($usagePercentage);
+
                     // Check if threshold is exceeded
-                    if ($sizeMB > $threshold) {
-                        // Check if there's already an active alert
-                        $existingAlert = MailboxAlert::where('mailbox', $mailboxPath)
-                            ->whereNull('resolved_at')
+                    if ($sizeBytes > $thresholdBytes) {
+                        // Check if there's already an active alert for this mailbox
+                        $existingAlert = MailboxAlert::where('email_address', $mailboxPath)
+                            ->whereIn('status', ['active', 'acknowledged'])
                             ->first();
 
                         if (!$existingAlert) {
                             // Create new alert
                             $alert = MailboxAlert::create([
-                                'mailbox' => $mailboxPath,
-                                'size_mb' => $sizeMB,
-                                'threshold_mb' => $threshold,
-                                'alerted_at' => now(),
+                                'email_address' => $mailboxPath,
+                                'current_size_bytes' => $sizeBytes,
+                                'threshold_bytes' => $thresholdBytes,
+                                'alert_type' => $alertType,
+                                'alert_date' => now(),
+                                'status' => 'active',
                             ]);
 
                             $alertsCreated++;
@@ -102,30 +110,46 @@ class CheckMailboxSizesJob implements ShouldQueue
                             Log::warning('Mailbox size threshold exceeded', [
                                 'mailbox' => $mailboxPath,
                                 'size_mb' => $sizeMB,
-                                'threshold_mb' => $threshold,
+                                'threshold_mb' => $thresholdMB,
+                                'alert_type' => $alertType,
+                                'usage_percentage' => round($usagePercentage, 1),
                                 'alert_id' => $alert->id
                             ]);
                         } else {
-                            // Update existing alert with current size
+                            // Update existing alert with current size and alert type
                             $existingAlert->update([
-                                'size_mb' => $sizeMB,
+                                'current_size_bytes' => $sizeBytes,
+                                'threshold_bytes' => $thresholdBytes,
+                                'alert_type' => $alertType,
+                                'alert_date' => now(), // Update alert date to show recent activity
+                            ]);
+
+                            Log::debug('Updated existing alert', [
+                                'mailbox' => $mailboxPath,
+                                'alert_id' => $existingAlert->id,
+                                'new_size_mb' => $sizeMB,
+                                'alert_type' => $alertType
                             ]);
                         }
                     } else {
                         // Check if we need to resolve any existing alerts
-                        $activeAlerts = MailboxAlert::where('mailbox', $mailboxPath)
-                            ->whereNull('resolved_at')
+                        $activeAlerts = MailboxAlert::where('email_address', $mailboxPath)
+                            ->whereIn('status', ['active', 'acknowledged'])
                             ->get();
 
                         foreach ($activeAlerts as $alert) {
-                            $alert->update(['resolved_at' => now()]);
+                            $alert->update([
+                                'status' => 'resolved',
+                                'current_size_bytes' => $sizeBytes, // Update with current size
+                            ]);
                             $alertsResolved++;
                             
                             Log::info('Mailbox size alert resolved', [
                                 'mailbox' => $mailboxPath,
                                 'current_size_mb' => $sizeMB,
-                                'threshold_mb' => $threshold,
-                                'alert_id' => $alert->id
+                                'threshold_mb' => $thresholdMB,
+                                'alert_id' => $alert->id,
+                                'previous_alert_type' => $alert->alert_type
                             ]);
                         }
                     }
@@ -133,17 +157,22 @@ class CheckMailboxSizesJob implements ShouldQueue
                     // Update monitoring metrics
                     $monitorService->updateMailboxMetrics($mailboxPath, [
                         'size_mb' => $sizeMB,
+                        'size_bytes' => $sizeBytes,
                         'file_count' => $sizeInfo['file_count'],
                         'last_checked' => now(),
-                        'threshold_mb' => $threshold,
-                        'status' => $sizeMB > $threshold ? 'over_threshold' : 'normal'
+                        'threshold_mb' => $thresholdMB,
+                        'threshold_bytes' => $thresholdBytes,
+                        'usage_percentage' => $usagePercentage,
+                        'alert_type' => $sizeBytes > $thresholdBytes ? $alertType : null,
+                        'status' => $sizeBytes > $thresholdBytes ? 'over_threshold' : 'normal'
                     ]);
 
                 } catch (\Exception $e) {
                     $errors++;
                     Log::error('Error checking mailbox size', [
                         'mailbox' => $mailboxPath,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
                 }
             }
@@ -175,8 +204,6 @@ class CheckMailboxSizesJob implements ShouldQueue
                 'trace' => $e->getTraceAsString()
             ]);
 
-
-
             $syncLog->update([
                 'status' => 'failed',
                 'details' => json_encode([
@@ -201,6 +228,17 @@ class CheckMailboxSizesJob implements ShouldQueue
         
         // Return default threshold
         return config('mail-backup.default_size_threshold_mb', 1000);
+    }
+
+    private function determineAlertType(float $usagePercentage): string
+    {
+        if ($usagePercentage >= 100) {
+            return 'purge_required';
+        } elseif ($usagePercentage >= 95) {
+            return 'size_critical';
+        } else {
+            return 'size_warning';
+        }
     }
 
     private function sendSizeAlert(MailboxAlert $alert, array $sizeInfo): void

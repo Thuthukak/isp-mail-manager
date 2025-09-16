@@ -12,9 +12,12 @@
         "laravel/framework": "^12.0",
         "laravel/horizon": "^5.33",
         "laravel/tinker": "^2.10.1",
-        "microsoft/microsoft-graph": "^2.40",
+        "league/flysystem": "^3.30",
+        "microsoft/microsoft-graph": "^2.46",
+        "microsoft/microsoft-graph-core": "^2.3",
         "spatie/laravel-activitylog": "^4.10",
-        "spatie/laravel-permission": "^6.20"
+        "spatie/laravel-permission": "^6.20",
+        "webklex/laravel-imap": "^6.2"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.15",
