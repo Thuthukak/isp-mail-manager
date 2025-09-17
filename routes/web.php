@@ -17,6 +17,15 @@ Route::middleware(['auth'])->group(function () {
     
     Route::get('/onedrive/auth/callback', [OneDriveAuthController::class, 'callback'])
         ->name('onedrive.auth.callback');
+
+    Route::get('/auth/microsoft/callback', [OneDriveAuthController::class, 'callback'])
+        ->name('auth.callback');
+
+        // Optional additional routes
+    Route::post('/onedrive/auth/revoke', [OneDriveAuthController::class, 'revoke'])
+        ->name('onedrive.auth.revoke');
+    Route::get('/onedrive/auth/status', [OneDriveAuthController::class, 'status'])
+        ->name('onedrive.auth.status');
 });
 
 // Test OneDrive connection

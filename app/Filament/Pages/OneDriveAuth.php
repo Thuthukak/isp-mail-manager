@@ -35,7 +35,57 @@ class OneDriveAuth extends Page
             return;
         }
 
+        // Handle session flash messages from OAuth callback
+        $this->handleSessionMessages();
+
         $this->loadAuthenticationStatus();
+    }
+
+    protected function handleSessionMessages(): void
+    {
+        // Handle success messages
+        if (session()->has('success')) {
+            Notification::make()
+                ->title('Success')
+                ->body(session('success'))
+                ->success()
+                ->send();
+            
+            session()->forget('success');
+        }
+
+        // Handle error messages
+        if (session()->has('error')) {
+            Notification::make()
+                ->title('Authentication Error')
+                ->body(session('error'))
+                ->danger()
+                ->send();
+            
+            session()->forget('error');
+        }
+
+        // Handle info messages
+        if (session()->has('info')) {
+            Notification::make()
+                ->title('Information')
+                ->body(session('info'))
+                ->info()
+                ->send();
+            
+            session()->forget('info');
+        }
+
+        // Handle warning messages
+        if (session()->has('warning')) {
+            Notification::make()
+                ->title('Warning')
+                ->body(session('warning'))
+                ->warning()
+                ->send();
+            
+            session()->forget('warning');
+        }
     }
 
     public function loadAuthenticationStatus(): void
@@ -139,7 +189,7 @@ class OneDriveAuth extends Page
                 ->icon('heroicon-m-key')
                 ->color('primary')
                 ->size(ActionSize::Large)
-                ->visible(fn () => !$this->authStatus['authenticated'])
+                ->visible(fn () => !($this->authStatus['authenticated'] ?? false))
                 ->url(route('onedrive.auth.authenticate'))
                 ->openUrlInNewTab(false),
 
@@ -147,7 +197,7 @@ class OneDriveAuth extends Page
                 ->label('Test Connection')
                 ->icon('heroicon-m-wifi')
                 ->color('info')
-                ->visible(fn () => $this->authStatus['authenticated'])
+                ->visible(fn () => $this->authStatus['authenticated'] ?? false)
                 ->action('testConnection'),
 
             Action::make('refresh_status')
@@ -160,7 +210,7 @@ class OneDriveAuth extends Page
                 ->label('Revoke Authentication')
                 ->icon('heroicon-m-trash')
                 ->color('danger')
-                ->visible(fn () => $this->authStatus['authenticated'])
+                ->visible(fn () => $this->authStatus['authenticated'] ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Revoke OneDrive Authentication')
                 ->modalDescription('This will disconnect OneDrive and delete stored tokens. You will need to re-authenticate to continue using OneDrive backup.')

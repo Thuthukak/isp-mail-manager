@@ -8,6 +8,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class MicrosoftAuthService
@@ -28,15 +29,19 @@ class MicrosoftAuthService
     /**
      * Generate authorization URL for OAuth flow
      */
-    public function getAuthorizationUrl(): string
+    public function getAuthorizationUrl(string $state = null): string
     {
+        $state = $state ?: Str::random(40);
+        
         $params = [
             'client_id' => $this->config['client_id'],
             'response_type' => 'code',
             'redirect_uri' => $this->config['redirect_uri'],
-            'scope' => $this->config['scopes'],
+            'scope' => is_array($this->config['scopes']) 
+                ? implode(' ', $this->config['scopes']) 
+                : $this->config['scopes'],
+            'state' => $state,
             'response_mode' => 'query',
-            'state' => bin2hex(random_bytes(16)) // CSRF protection
         ];
 
         return $this->config['auth_url'] . '?' . http_build_query($params);
@@ -47,21 +52,29 @@ class MicrosoftAuthService
      */
     public function getAccessTokenFromCode(string $code): array
     {
-        $data = [
+        $params = [
             'client_id' => $this->config['client_id'],
             'client_secret' => $this->config['client_secret'],
             'code' => $code,
+            'redirect_uri' => $this->config['redirect_uri'],
             'grant_type' => 'authorization_code',
-            'redirect_uri' => $this->config['redirect_uri']
+            // Note: Do NOT include scope here - it's already established during authorization
         ];
 
         try {
             $response = $this->client->post($this->config['token_url'], [
-                'form_params' => $data,
-                'headers' => ['Accept' => 'application/json']
+                'form_params' => $params,
+                'headers' => [
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                    'Accept' => 'application/json'
+                ],
             ]);
 
             $tokenData = json_decode($response->getBody()->getContents(), true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to parse token response');
+            }
 
             if (!isset($tokenData['access_token'])) {
                 throw new \Exception('No access token in response');
@@ -70,8 +83,54 @@ class MicrosoftAuthService
             return $tokenData;
         } catch (RequestException $e) {
             $errorBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
-            Log::error('Token exchange failed', ['error' => $errorBody]);
+            Log::error('Microsoft Auth Error - Token exchange failed', [
+                'error' => $e->getMessage(),
+                'response' => $errorBody
+            ]);
             throw new \Exception('Failed to exchange code for token: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Refresh access token using refresh token
+     */
+    public function refreshAccessToken(string $refreshToken): array
+    {
+        $params = [
+            'client_id' => $this->config['client_id'],
+            'client_secret' => $this->config['client_secret'],
+            'refresh_token' => $refreshToken,
+            'grant_type' => 'refresh_token',
+            // Note: Do NOT include scope here - it's preserved from the original authorization
+        ];
+
+        try {
+            $response = $this->client->post($this->config['token_url'], [
+                'form_params' => $params,
+                'headers' => [
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                    'Accept' => 'application/json'
+                ],
+            ]);
+
+            $tokenData = json_decode($response->getBody()->getContents(), true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to parse refresh token response');
+            }
+
+            if (!isset($tokenData['access_token'])) {
+                throw new \Exception('No access token in refresh response');
+            }
+
+            return $tokenData;
+        } catch (RequestException $e) {
+            $errorBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
+            Log::error('Microsoft Token Refresh Error', [
+                'error' => $e->getMessage(),
+                'response' => $errorBody
+            ]);
+            throw new \Exception('Failed to refresh access token: ' . $e->getMessage());
         }
     }
 
@@ -88,6 +147,10 @@ class MicrosoftAuthService
             ? Carbon::now()->addSeconds($tokenData['expires_in'])
             : null;
 
+        $scopes = isset($tokenData['scope']) 
+            ? (is_string($tokenData['scope']) ? explode(' ', $tokenData['scope']) : $tokenData['scope'])
+            : (is_array($this->config['scopes']) ? $this->config['scopes'] : explode(' ', $this->config['scopes']));
+
         return OAuthToken::updateOrCreate(
             [
                 'user_id' => $user->id,
@@ -98,7 +161,7 @@ class MicrosoftAuthService
                 'refresh_token' => $tokenData['refresh_token'] ?? null,
                 'expires_at' => $expiresAt,
                 'token_type' => $tokenData['token_type'] ?? 'Bearer',
-                'scope' => $tokenData['scope'] ?? null
+                'scope' => is_array($scopes) ? implode(' ', $scopes) : $scopes
             ]
         );
     }
@@ -129,7 +192,7 @@ class MicrosoftAuthService
             return $token->access_token;
         }
 
-        // Try to refresh the token
+        // Try to refresh the token if it's expired
         if ($token->refresh_token) {
             try {
                 $newTokenData = $this->refreshAccessToken($token->refresh_token);
@@ -148,38 +211,6 @@ class MicrosoftAuthService
     }
 
     /**
-     * Refresh access token using refresh token
-     */
-    private function refreshAccessToken(string $refreshToken): array
-    {
-        $data = [
-            'client_id' => $this->config['client_id'],
-            'client_secret' => $this->config['client_secret'],
-            'refresh_token' => $refreshToken,
-            'grant_type' => 'refresh_token'
-        ];
-
-        try {
-            $response = $this->client->post($this->config['token_url'], [
-                'form_params' => $data,
-                'headers' => ['Accept' => 'application/json']
-            ]);
-
-            $tokenData = json_decode($response->getBody()->getContents(), true);
-
-            if (!isset($tokenData['access_token'])) {
-                throw new \Exception('No access token in refresh response');
-            }
-
-            return $tokenData;
-        } catch (RequestException $e) {
-            $errorBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
-            Log::error('Token refresh failed', ['error' => $errorBody]);
-            throw new \Exception('Failed to refresh token: ' . $e->getMessage());
-        }
-    }
-
-    /**
      * Get user information from Microsoft Graph
      */
     public function getUserInfo(string $accessToken): array
@@ -192,10 +223,19 @@ class MicrosoftAuthService
                 ]
             ]);
 
-            return json_decode($response->getBody()->getContents(), true);
+            $userData = json_decode($response->getBody()->getContents(), true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to parse user info response');
+            }
+
+            return $userData;
         } catch (RequestException $e) {
             $errorBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
-            Log::error('Failed to get user info', ['error' => $errorBody]);
+            Log::error('Failed to get user info', [
+                'error' => $e->getMessage(),
+                'response' => $errorBody
+            ]);
             throw new \Exception('Failed to get user information: ' . $e->getMessage());
         }
     }
@@ -269,7 +309,9 @@ class MicrosoftAuthService
         return [
             'expires_at' => $token->expires_at,
             'is_expired' => $token->isExpired(),
-            'expires_soon' => $token->isExpiringSoon(3600), // 1 hour
+            'expires_soon' => method_exists($token, 'isExpiringSoon') 
+                ? $token->isExpiringSoon(3600) // 1 hour
+                : ($token->expires_at && $token->expires_at->subMinutes(60)->isPast()),
             'has_refresh_token' => !empty($token->refresh_token),
             'scope' => $token->scope,
             'token_type' => $token->token_type
