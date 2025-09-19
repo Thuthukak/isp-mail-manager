@@ -123,4 +123,18 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+     /*
+    |--------------------------------------------------------------------------
+    | Providers
+    |--------------------------------------------------------------------------
+    | 
+    | Providers registered in app/bootsrap/providers.php
+    | 
+    */
+
+    // 'providers' => [
+
+    // App\Providers\ConfigurationServiceProvider::class,
+    // ],
+
 ];

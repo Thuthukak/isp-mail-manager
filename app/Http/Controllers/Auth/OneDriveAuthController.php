@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
 
@@ -31,7 +30,7 @@ class OneDriveAuthController extends Controller
         
         if (!$user->hasRole(['super_admin', 'admin'])) {
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'You do not have permission to manage OneDrive authentication.');
         }
 
@@ -59,7 +58,7 @@ class OneDriveAuthController extends Controller
             ]);
             
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Failed to initiate authentication: ' . $e->getMessage());
         }
     }
@@ -85,7 +84,7 @@ class OneDriveAuthController extends Controller
         if (!$user) {
             Log::error('OneDrive callback: No user found in session');
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Authentication session expired. Please try again.');
         }
 
@@ -97,7 +96,7 @@ class OneDriveAuthController extends Controller
                 'received_state' => $receivedState
             ]);
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Invalid authentication state. Possible security issue detected.');
         }
 
@@ -109,13 +108,13 @@ class OneDriveAuthController extends Controller
             ]);
             
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Authentication was denied: ' . ($errorDescription ?: $error));
         }
 
         if (!$code) {
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'No authorization code received from Microsoft.');
         }
 
@@ -144,7 +143,7 @@ class OneDriveAuthController extends Controller
             $driveOwner = $driveInfo['owner']['user']['displayName'] ?? '';
             
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('success', sprintf(
                     'OneDrive authentication successful! Connected to: %s%s',
                     $displayName,
@@ -160,7 +159,7 @@ class OneDriveAuthController extends Controller
             ]);
             
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Authentication failed: ' . $e->getMessage());
         }
     }
@@ -174,7 +173,7 @@ class OneDriveAuthController extends Controller
         
         if (!$user->hasRole(['super_admin', 'admin'])) {
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'You do not have permission to manage OneDrive authentication.');
         }
 
@@ -188,11 +187,11 @@ class OneDriveAuthController extends Controller
                 ]);
                 
                 return redirect()
-                    ->route('filament.pages.onedrive-auth')
+                    ->route('filament.admin.pages.one-drive-auth')
                     ->with('success', 'OneDrive authentication has been revoked successfully.');
             } else {
                 return redirect()
-                    ->route('filament.pages.onedrive-auth')
+                    ->route('filament.admin.pages.one-drive-auth')
                     ->with('info', 'No OneDrive authentication found to revoke.');
             }
             
@@ -203,7 +202,7 @@ class OneDriveAuthController extends Controller
             ]);
             
             return redirect()
-                ->route('filament.pages.onedrive-auth')
+                ->route('filament.admin.pages.one-drive-auth')
                 ->with('error', 'Failed to revoke authentication: ' . $e->getMessage());
         }
     }
