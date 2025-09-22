@@ -17,8 +17,8 @@ class ConfigurationResource extends Resource
 {
     protected static ?string $model = Configuration::class;
     protected static ?string $navigationIcon = 'heroicon-o-adjustments-horizontal';
-    protected static ?string $navigationGroup = 'System';
-    protected static ?int $navigationSort = 2;
+    protected static ?string $navigationGroup = 'System Configurations';
+    protected static ?int $navigationSort = 4;
     protected static ?string $navigationLabel = 'Configurations';
 
     public static function form(Form $form): Form
@@ -92,12 +92,12 @@ class ConfigurationResource extends Resource
 
                 Forms\Components\Section::make('Value')
                     ->schema([
-                        self::getValueField(),
+                        self::getValueFields(),
                     ]),
             ]);
     }
 
-    protected static function getValueField(): Forms\Components\Field
+    protected static function getValueFields(): Forms\Components\Grid
     {
         return Forms\Components\Grid::make()
             ->schema([

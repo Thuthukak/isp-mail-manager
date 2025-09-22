@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use App\Services\OneDrivePersonalService;
 use App\Services\MicrosoftAuthService;
+use App\Services\ConfigurationService;
 use App\Services\MailServerService;
 use App\Services\MailBackupService;
 use App\Services\MailRestorationService;
@@ -18,8 +19,12 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(OneDrivePersonalService::class, function ($app) {
-        return new OneDrivePersonalService($app->make(MicrosoftAuthService::class));
+            return new OneDrivePersonalService(
+                $app->make(MicrosoftAuthService::class),
+                $app->make(ConfigurationService::class)
+            );
         });
+
         $this->app->singleton(MailServerService::class);
         $this->app->singleton(MailBackupService::class);
         $this->app->singleton(MailRestorationService::class);

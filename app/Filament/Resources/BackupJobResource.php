@@ -20,9 +20,9 @@ class BackupJobResource extends Resource
     
     protected static ?string $navigationLabel = 'Backup History';
     
-    protected static ?string $navigationGroup = 'Email Management';
+    protected static ?string $navigationGroup = 'Email Backups';
     
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 4;
 
     public static function form(Form $form): Form
     {

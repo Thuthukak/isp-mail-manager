@@ -14,8 +14,8 @@ class ConfigurationGroupResource extends Resource
 {
     protected static ?string $model = ConfigurationGroup::class;
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
-    protected static ?string $navigationGroup = 'System';
-    protected static ?int $navigationSort = 1;
+    protected static ?string $navigationGroup = 'System Configurations';
+    protected static ?int $navigationSort = 4;
     protected static ?string $navigationLabel = 'Configuration Groups';
 
     public static function form(Form $form): Form

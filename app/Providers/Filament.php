@@ -48,9 +48,9 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                Widgets\AccountWidget::class,
-                Widgets\FilamentInfoWidget::class,
-                \App\Filament\Widgets\MailSystemStatsWidget::class,
+                // Widgets\AccountWidget::class,
+                // Widgets\FilamentInfoWidget::class,
+                // \App\Filament\Widgets\MailSystemStatsWidget::class,
                 // \App\Filament\Widgets\SyncStatusWidget::class,
                 // \App\Filament\Widgets\MailboxSizeWidget::class,
                 // \App\Filament\Widgets\RecentActivitiesWidget::class,
@@ -71,17 +71,17 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->navigationGroups([
-                NavigationGroup::make('Mail Management')
-                    ->label('Mail Management')
-                    ->icon('heroicon-o-envelope')
+                NavigationGroup::make('Onedrive')
+                    ->label('Onedrive')
+                    ->icon('heroicon-o-cloud-arrow-up')
                     ->collapsed(false),
-                NavigationGroup::make('System')
-                    ->label('System')
-                    ->icon('heroicon-o-cog-6-tooth')
+                NavigationGroup::make('Email Backups')
+                    ->label('Email Backups')
+                    ->icon('heroicon-o-at-symbol')
                     ->collapsed(true),
-                NavigationGroup::make('Reports')
-                    ->label('Reports & Analytics')
-                    ->icon('heroicon-o-chart-bar')
+                NavigationGroup::make('System')
+                    ->label('System Configurations')
+                    ->icon('heroicon-o-cog-6-tooth')
                     ->collapsed(true),
                 NavigationGroup::make('Administration')
                     ->label('Administration')
@@ -89,17 +89,17 @@ class AdminPanelProvider extends PanelProvider
                     ->collapsed(true),
             ])
             ->navigationItems([
-                NavigationItem::make('System Health')
-                    ->url('/admin/system-health')
-                    ->icon('heroicon-o-heart')
-                    ->group('System')
-                    ->sort(1),
-                NavigationItem::make('Queue Monitor')
-                    ->url('/admin/horizon')
-                    ->icon('heroicon-o-queue-list')
-                    ->group('System')
-                    ->sort(2)
-                    ->openUrlInNewTab(),
+                // NavigationItem::make('System Health')
+                //     ->url('/admin/system-health')
+                //     ->icon('heroicon-o-heart')
+                //     ->group('System')
+                //     ->sort(1),
+                // NavigationItem::make('Queue Monitor')
+                //     ->url('/admin/horizon')
+                //     ->icon('heroicon-o-queue-list')
+                //     ->group('System')
+                //     ->sort(2)
+                //     ->openUrlInNewTab(),
             ])
             
             ->maxContentWidth('full')

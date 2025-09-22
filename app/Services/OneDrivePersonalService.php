@@ -5,25 +5,71 @@ namespace App\Services;
 use App\Models\User;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class OneDrivePersonalService
 {
     private Client $client;
-    private array $config;
     private MicrosoftAuthService $authService;
+    private ConfigurationService $configService;
 
-    public function __construct(MicrosoftAuthService $authService)
+    public function __construct(MicrosoftAuthService $authService, ConfigurationService $configService)
     {
         $this->authService = $authService;
+        $this->configService = $configService;
         $this->client = new Client([
             'timeout' => 60,
             'verify' => false, // Set to true in production
         ]);
+    }
+
+    /**
+     * Get OneDrive configuration from database
+     */
+    private function getConfig(): array
+    {
+        $configs = $this->configService->getGroup('onedrive');
         
-        $this->config = Config::get('onedrive');
+        // Build the configuration array with fallback values
+        return [
+            'client_id' => $configs->get('MICROSOFT_GRAPH_CLIENT_ID'),
+            'client_secret' => $configs->get('MICROSOFT_GRAPH_CLIENT_SECRET'),
+            'tenant_id' => $configs->get('MICROSOFT_GRAPH_TENANT_ID', 'common'),
+            'redirect_uri' => $configs->get('MICROSOFT_GRAPH_REDIRECT_URI'),
+            'user_id' => $configs->get('ONEDRIVE_USER_ID'),
+            'root_folder' => $configs->get('ONEDRIVE_ROOT_FOLDER', 'ISP_Mail_Backups'),
+            'upload_chunk_size' => (int) $configs->get('ONEDRIVE_UPLOAD_CHUNK_SIZE', 10485760), // 10MB
+            'max_retry_attempts' => (int) $configs->get('ONEDRIVE_MAX_RETRY_ATTEMPTS', 3),
+            'retry_delay' => (int) $configs->get('ONEDRIVE_RETRY_DELAY', 5),
+            'scopes' => $this->parseScopes($configs->get('MICROSOFT_SCOPES', 'https://graph.microsoft.com/Files.ReadWrite https://graph.microsoft.com/User.Read offline_access')),
+            'api_url' => 'https://graph.microsoft.com/v1.0',
+            'auth_url' => 'https://login.microsoftonline.com/' . $configs->get('MICROSOFT_GRAPH_TENANT_ID', 'common') . '/oauth2/v2.0/authorize',
+            'token_url' => 'https://login.microsoftonline.com/' . $configs->get('MICROSOFT_GRAPH_TENANT_ID', 'common') . '/oauth2/v2.0/token',
+            'drive_type' => $configs->get('ONEDRIVE_TYPE', 'personal'),
+            'drive_id' => $configs->get('ONEDRIVE_DRIVE_ID', 'me/drive'),
+        ];
+    }
+
+    /**
+     * Parse scopes string into array
+     */
+    private function parseScopes(string $scopes): array
+    {
+        return array_filter(explode(' ', $scopes));
+    }
+
+    /**
+     * Validate required configuration
+     */
+    private function validateConfig(array $config): void
+    {
+        $required = ['client_id', 'client_secret', 'redirect_uri'];
+        
+        foreach ($required as $key) {
+            if (empty($config[$key])) {
+                throw new \Exception("Missing required OneDrive configuration: {$key}. Please configure it in the admin panel.");
+            }
+        }
     }
 
     /**
@@ -45,13 +91,15 @@ class OneDrivePersonalService
             throw new \Exception('No valid access token available. Please re-authenticate.');
         }
 
+        $config = $this->getConfig();
+
         $options['headers'] = array_merge($options['headers'] ?? [], [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
         ]);
 
         try {
-            $response = $this->client->request($method, $this->config['api_url'] . $endpoint, $options);
+            $response = $this->client->request($method, $config['api_url'] . $endpoint, $options);
             $body = $response->getBody()->getContents();
             
             return json_decode($body, true) ?? [];
@@ -81,13 +129,15 @@ class OneDrivePersonalService
      */
     public function ensureRootFolder(User $user = null): array
     {
+        $config = $this->getConfig();
+        
         try {
             // Try to get the folder first
-            return $this->getFolder($this->config['root_folder'], $user);
+            return $this->getFolder($config['root_folder'], $user);
         } catch (\Exception $e) {
             // Folder doesn't exist, create it
-            Log::info('Creating root folder: ' . $this->config['root_folder']);
-            return $this->createFolder($this->config['root_folder'], null, $user);
+            Log::info('Creating root folder: ' . $config['root_folder']);
+            return $this->createFolder($config['root_folder'], null, $user);
         }
     }
 
@@ -211,8 +261,9 @@ class OneDrivePersonalService
             throw new \Exception("Local file does not exist: {$localFilePath}");
         }
 
+        $config = $this->getConfig();
         $fileSize = filesize($localFilePath);
-        $chunkSize = $this->config['upload_chunk_size']; // 10MB by default
+        $chunkSize = $config['upload_chunk_size'];
 
         // Create upload session
         $session = $this->createUploadSession($remotePath, $fileSize, $user);
@@ -225,7 +276,7 @@ class OneDrivePersonalService
 
         $uploadedBytes = 0;
         $retryCount = 0;
-        $maxRetries = $this->config['max_retry_attempts'];
+        $maxRetries = $config['max_retry_attempts'];
 
         try {
             while ($uploadedBytes < $fileSize) {
@@ -275,7 +326,7 @@ class OneDrivePersonalService
                     ]);
                     
                     // Exponential backoff
-                    sleep(pow(2, $retryCount - 1) * $this->config['retry_delay']);
+                    sleep(pow(2, $retryCount - 1) * $config['retry_delay']);
                     
                     // Reset file pointer for retry
                     fseek($handle, $rangeStart);
@@ -294,6 +345,7 @@ class OneDrivePersonalService
     public function downloadFile(string $remotePath, string $localPath, User $user = null): bool
     {
         $encodedPath = urlencode($remotePath);
+        $config = $this->getConfig();
         
         try {
             $accessToken = $this->getAccessToken($user);
@@ -302,7 +354,7 @@ class OneDrivePersonalService
             }
 
             $response = $this->client->get(
-                $this->config['api_url'] . "/me/drive/root:/{$encodedPath}:/content",
+                $config['api_url'] . "/me/drive/root:/{$encodedPath}:/content",
                 [
                     'headers' => [
                         'Authorization' => 'Bearer ' . $accessToken,
@@ -631,5 +683,49 @@ class OneDrivePersonalService
             ]);
             return 0;
         }
+    }
+
+    /**
+     * Check if OneDrive is properly configured
+     */
+    public function isConfigured(): bool
+    {
+        try {
+            $config = $this->getConfig();
+            $this->validateConfig($config);
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Get configuration status for admin dashboard
+     */
+    public function getConfigurationStatus(): array
+    {
+        $config = $this->getConfig();
+        
+        return [
+            'is_configured' => $this->isConfigured(),
+            'has_client_id' => !empty($config['client_id']),
+            'has_client_secret' => !empty($config['client_secret']),
+            'has_redirect_uri' => !empty($config['redirect_uri']),
+            'tenant_id' => $config['tenant_id'],
+            'drive_type' => $config['drive_type'],
+            'root_folder' => $config['root_folder'],
+            'upload_chunk_size' => $config['upload_chunk_size'],
+            'max_retry_attempts' => $config['max_retry_attempts'],
+            'retry_delay' => $config['retry_delay'],
+            'scopes' => $config['scopes'],
+        ];
+    }
+
+    /**
+     * Get configuration for external services
+     */
+    public function getOneDriveConfig(): array
+    {
+        return $this->getConfig();
     }
 }

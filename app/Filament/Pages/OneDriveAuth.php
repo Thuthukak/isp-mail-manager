@@ -19,11 +19,11 @@ class OneDriveAuth extends Page
     
     protected static ?string $title = 'OneDrive Authentication';
     
-    protected static ?string $navigationLabel = 'OneDrive Setup';
+    protected static ?string $navigationLabel = 'OneDrive Connection';
     
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $navigationGroup = 'Onedrive';
     
-    protected static ?int $navigationSort = 99;
+    protected static ?int $navigationSort = 2;
 
     public array $authStatus = [];
 

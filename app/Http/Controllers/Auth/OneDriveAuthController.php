@@ -5,18 +5,20 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Services\MicrosoftAuthService;
 use App\Services\OneDrivePersonalService;
+use App\Services\ConfigurationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
+use Filament\Notifications\Notification;
 
 class OneDriveAuthController extends Controller
 {
     public function __construct(
         private MicrosoftAuthService $authService,
-        private OneDrivePersonalService $oneDriveService
+        private OneDrivePersonalService $oneDriveService,
+        private ConfigurationService $configService
     ) {
         
     }
@@ -34,6 +36,13 @@ class OneDriveAuthController extends Controller
                 ->with('error', 'You do not have permission to manage OneDrive authentication.');
         }
 
+        // Check if OneDrive is properly configured before starting auth flow
+        if (!$this->authService->isConfigured()) {
+            return redirect()
+                ->route('filament.admin.pages.one-drive-auth')
+                ->with('error', 'OneDrive is not properly configured. Please configure it in System Configuration first.');
+        }
+
         try {
             // Generate CSRF state parameter
             $state = bin2hex(random_bytes(16));
@@ -47,19 +56,30 @@ class OneDriveAuthController extends Controller
             Log::info('OneDrive authentication initiated', [
                 'user_id' => $user->id,
                 'user_email' => $user->email,
-                'state' => $state
+                'state' => $state,
+                'config_status' => $this->authService->getConfigurationStatus()
             ]);
             
             return redirect($authUrl);
         } catch (\Exception $e) {
             Log::error('Failed to initiate OneDrive authentication', [
                 'user_id' => $user->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'is_configured' => $this->authService->isConfigured()
             ]);
+            
+            $errorMessage = 'Failed to initiate authentication: ' . $e->getMessage();
+            
+            // Provide more helpful error messages for common configuration issues
+            if (str_contains($e->getMessage(), 'client_id')) {
+                $errorMessage = 'Microsoft Graph Client ID is not configured. Please check your OneDrive settings.';
+            } elseif (str_contains($e->getMessage(), 'redirect_uri')) {
+                $errorMessage = 'OAuth Redirect URI is not configured. Please check your OneDrive settings.';
+            }
             
             return redirect()
                 ->route('filament.admin.pages.one-drive-auth')
-                ->with('error', 'Failed to initiate authentication: ' . $e->getMessage());
+                ->with('error', $errorMessage);
         }
     }
 
@@ -119,6 +139,11 @@ class OneDriveAuthController extends Controller
         }
 
         try {
+            // Double-check configuration before proceeding
+            if (!$this->authService->isConfigured()) {
+                throw new \Exception('OneDrive configuration is incomplete. Please check your settings.');
+            }
+
             // Exchange code for token
             $tokenData = $this->authService->getAccessTokenFromCode($code);
             
@@ -131,11 +156,16 @@ class OneDriveAuthController extends Controller
             // Test OneDrive connection
             $driveInfo = $this->oneDriveService->getDriveInfo($user);
             
+            // Get configuration for logging
+            $config = $this->configService->getGroup('onedrive');
+            
             Log::info('OneDrive authentication successful', [
                 'user_id' => $user->id,
                 'user_email' => $user->email,
                 'microsoft_user' => $userInfo['userPrincipalName'] ?? 'Unknown',
                 'drive_id' => $driveInfo['id'] ?? null,
+                'drive_type' => $config->get('ONEDRIVE_TYPE', 'personal'),
+                'root_folder' => $config->get('ONEDRIVE_ROOT_FOLDER', 'ISP_Mail_Backups'),
                 'token_expires_at' => $oauthToken->expires_at?->toISOString()
             ]);
             
@@ -155,12 +185,24 @@ class OneDriveAuthController extends Controller
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
                 'code_present' => !empty($code),
+                'config_status' => $this->authService->getConfigurationStatus(),
                 'trace' => $e->getTraceAsString()
             ]);
             
+            // Provide more specific error messages
+            $errorMessage = 'Authentication failed: ' . $e->getMessage();
+            
+            if (str_contains($e->getMessage(), 'client_secret')) {
+                $errorMessage = 'Invalid client secret. Please check your OneDrive configuration.';
+            } elseif (str_contains($e->getMessage(), 'redirect_uri')) {
+                $errorMessage = 'Invalid redirect URI. Please check your OneDrive configuration matches your Azure app settings.';
+            } elseif (str_contains($e->getMessage(), 'configuration')) {
+                $errorMessage = 'OneDrive configuration error. Please check your settings in System Configuration.';
+            }
+            
             return redirect()
                 ->route('filament.admin.pages.one-drive-auth')
-                ->with('error', 'Authentication failed: ' . $e->getMessage());
+                ->with('error', $errorMessage);
         }
     }
 
@@ -224,13 +266,16 @@ class OneDriveAuthController extends Controller
         try {
             $isAuthenticated = $this->authService->isAuthenticated($user);
             $tokenInfo = $this->authService->getTokenInfo($user);
+            $configStatus = $this->authService->getConfigurationStatus();
             
             $response = [
                 'authenticated' => $isAuthenticated,
-                'token_info' => $tokenInfo
+                'configured' => $configStatus['is_configured'],
+                'token_info' => $tokenInfo,
+                'configuration_status' => $configStatus
             ];
             
-            if ($isAuthenticated) {
+            if ($isAuthenticated && $configStatus['is_configured']) {
                 try {
                     $driveInfo = $this->oneDriveService->getDriveInfo($user);
                     $response['drive_info'] = [
@@ -238,8 +283,12 @@ class OneDriveAuthController extends Controller
                         'owner' => $driveInfo['owner']['user']['displayName'] ?? null,
                         'quota' => $driveInfo['quota'] ?? null
                     ];
+                    
+                    // Test connection
+                    $response['connection_test'] = $this->oneDriveService->testConnection($user);
                 } catch (\Exception $e) {
                     $response['drive_error'] = $e->getMessage();
+                    $response['connection_test'] = false;
                 }
             }
             
@@ -253,6 +302,36 @@ class OneDriveAuthController extends Controller
             
             return response()->json([
                 'authenticated' => false,
+                'configured' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Test OneDrive configuration without authentication
+     */
+    public function testConfiguration(): \Illuminate\Http\JsonResponse
+    {
+        $user = Auth::user();
+        
+        if (!$user || !$user->hasRole(['super_admin', 'admin'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        try {
+            $configStatus = $this->authService->getConfigurationStatus();
+            
+            return response()->json([
+                'configured' => $configStatus['is_configured'],
+                'status' => $configStatus,
+                'message' => $configStatus['is_configured'] 
+                    ? 'OneDrive is properly configured' 
+                    : 'OneDrive configuration is incomplete'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'configured' => false,
                 'error' => $e->getMessage()
             ], 500);
         }

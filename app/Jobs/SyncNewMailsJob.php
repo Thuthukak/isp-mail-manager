@@ -103,7 +103,7 @@ class SyncNewMailsJob implements ShouldQueue
                                     [
                                         'onedrive_path' => $result['onedrive_path'],
                                         'status' => 'completed',
-                                        'size' => $file['size'],
+                                        'file_size' => $file['size'],
                                     ]
                                 );
                             } else {
